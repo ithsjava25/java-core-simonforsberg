@@ -19,11 +19,25 @@ public class Warehouse {
         return INSTANCES.computeIfAbsent(name, Warehouse::new);
     }
 
+    public static Warehouse getInstance() {
+        return getInstance("default");
+    }
+
     public void addProduct(Product product) {
         if (product == null) {
             throw new IllegalArgumentException("Product cannot be null.");
         }
-        productsByCategory.computeIfAbsent(product.category(), c -> new ArrayList<>()).add(product);
+
+        boolean duplicateId = productsByCategory.values().stream()
+                .flatMap(Collection::stream)
+                .anyMatch(p->p.uuid().equals(product.uuid()));
+
+        if (duplicateId) {
+            throw new IllegalArgumentException("Product with that id already exists, use updateProduct for updates.");
+        }
+        productsByCategory
+                .computeIfAbsent(product.category(), c -> new ArrayList<>())
+                .add(product);
     }
 
     public List<Product> getProducts() {
@@ -58,14 +72,14 @@ public class Warehouse {
                 .filter(p -> p instanceof Perishable)
                 .map(p -> (Perishable) p)
                 .filter(Perishable::isExpired)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public List<Shippable> shippableProducts() {
         return getProducts().stream()
                 .filter(p -> p instanceof Shippable)
                 .map(p -> (Shippable) p)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public void remove(UUID id) {
