@@ -1,8 +1,5 @@
 package com.example;
 
-//productDetails() should look like: "Food: Milk, Expires: 2025-12-24".
-//Shipping rule: cost = weight * 50.
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -48,6 +45,6 @@ public class FoodProduct extends Product implements Perishable, Shippable {
 
     @Override
     public String productDetails() {
-        return "Food: " + name + ", Expires: " + expirationDate;
+        return "Food: " + name() + ", Expires: " + expirationDate;
     }
 }

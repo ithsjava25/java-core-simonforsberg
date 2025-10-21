@@ -10,7 +10,7 @@ abstract public class Product {
     private final Category category;
     private BigDecimal price;
 
-    protected Product(UUID id, String name, Category category, BigDecimal price) {
+    public Product(UUID id, String name, Category category, BigDecimal price) {
         this.id = id;
         this.name = name;
         this.category = category;
