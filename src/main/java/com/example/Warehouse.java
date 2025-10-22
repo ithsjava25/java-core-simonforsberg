@@ -30,7 +30,7 @@ public class Warehouse {
 
         boolean duplicateId = productsByCategory.values().stream()
                 .flatMap(Collection::stream)
-                .anyMatch(p->p.uuid().equals(product.uuid()));
+                .anyMatch(p -> p.uuid().equals(product.uuid()));
 
         if (duplicateId) {
             throw new IllegalArgumentException("Product with that id already exists, use updateProduct for updates.");
