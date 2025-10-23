@@ -13,12 +13,13 @@ import java.util.stream.Collectors;
  */
 class WarehouseAnalyzer {
     private final Warehouse warehouse;
-    
+
     public WarehouseAnalyzer(Warehouse warehouse) {
         this.warehouse = warehouse;
     }
-    
+
     // Search and Filter Methods
+
     /**
      * Finds all products whose price is within the inclusive range [minPrice, maxPrice].
      * Based on tests: products priced exactly at the boundaries must be included; values outside are excluded.
@@ -37,7 +38,7 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     /**
      * Returns all perishable products that expire within the next {@code days} days counting from today,
      * including items that expire today, and excluding items already expired. Non-perishables are ignored.
@@ -60,7 +61,7 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     /**
      * Performs a case-insensitive partial name search.
      * Test expectation: searching for "milk" returns all products whose name contains that substring,
@@ -79,7 +80,7 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     /**
      * Returns all products whose price is strictly greater than the given price.
      * While not asserted directly by tests, this helper is consistent with price-based filtering.
@@ -96,8 +97,9 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     // Analytics Methods
+
     /**
      * Computes the average price per category using product weight as the weighting factor when available.
      * Test expectation: for FoodProduct with weights, use weighted average = sum(price*weight)/sum(weight).
@@ -136,7 +138,7 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     /**
      * Identifies products whose price deviates from the mean by more than the specified
      * number of standard deviations. Uses population standard deviation over all products.
@@ -149,7 +151,10 @@ class WarehouseAnalyzer {
         List<Product> products = warehouse.getProducts();
         int n = products.size();
         if (n == 0) return List.of();
-        double sum = products.stream().map(Product::price).mapToDouble(bd -> bd.doubleValue()).sum();
+        double sum = products.stream()
+                .map(Product::price)
+                .mapToDouble(BigDecimal::doubleValue)
+                .sum();
         double mean = sum / n;
         double variance = products.stream()
                 .map(Product::price)
@@ -164,7 +169,59 @@ class WarehouseAnalyzer {
         }
         return outliers;
     }
-    
+
+    /**
+     * Identifies products whose prices are outliers using the Interquartile Range (IQR) method.
+     *
+     * @param outlierFactor multiplier for the IQR threshold (e.g., 1.5)
+     * @return list of outlier products
+     */
+    public List<Product> findPriceOutliersUsingIQR(double outlierFactor) {
+        List<Product> products = warehouse.getProducts();
+        if (products.isEmpty()) return List.of();
+
+        // Sort prices in ascending order into a list
+        List<Double> prices = products.stream()
+                .map(p -> p.price().doubleValue())
+                .sorted()
+                .toList();
+
+        // Find Q1 and Q3, calculate IQR
+        double q1 = getPercentile(prices, 25);
+        double q3 = getPercentile(prices, 75);
+        double iqr = q3 - q1;
+
+        // Calculate lower and upper limits
+        double lowerLimit = q1 - outlierFactor * iqr;
+        double upperLimit = q3 + outlierFactor * iqr;
+
+        // Filter out and return outliers
+        return products.stream()
+                .filter(p -> {
+                    double price = p.price().doubleValue();
+                    return price < lowerLimit || price > upperLimit;
+                })
+                .toList();
+    }
+
+    /**
+     * Calculates the percentile value for a given sorted list of numbers.
+     *
+     * @param sorted a sorted list of numbers
+     * @param percentile the desired percentile (e.g., 25 for Q1, 75 for Q3)
+     * @return the value at the specified percentile
+     */
+    private double getPercentile(List<Double> sorted, double percentile) {
+        double index = (percentile / 100.0) * (sorted.size() - 1);
+        int lower = (int) Math.floor(index);
+        int upper = (int) Math.ceil(index);
+        if (lower == upper) {
+            return sorted.get(lower);
+        }
+        double fraction = index - lower;
+        return sorted.get(lower) + fraction * (sorted.get(upper) - sorted.get(lower));
+    }
+
     /**
      * Groups all shippable products into ShippingGroup buckets such that each group's total weight
      * does not exceed the provided maximum. The goal is to minimize the number of groups and/or total
@@ -201,15 +258,16 @@ class WarehouseAnalyzer {
         for (List<Shippable> bin : bins) groups.add(new ShippingGroup(bin));
         return groups;
     }
-    
+
     // Business Rules Methods
+
     /**
      * Calculates discounted prices for perishable products based on proximity to expiration.
      * Discount rules from tests:
-     *  - Expires today: 50% discount (price * 0.50)
-     *  - Expires tomorrow: 30% discount (price * 0.70)
-     *  - Expires within 3 days: 15% discount (price * 0.85)
-     *  - Otherwise (including >3 days ahead): no discount
+     * - Expires today: 50% discount (price * 0.50)
+     * - Expires tomorrow: 30% discount (price * 0.70)
+     * - Expires within 3 days: 15% discount (price * 0.85)
+     * - Otherwise (including >3 days ahead): no discount
      * Non-perishable products should retain their original price.
      *
      * @return a map from Product to its discounted price
@@ -237,15 +295,15 @@ class WarehouseAnalyzer {
         }
         return result;
     }
-    
+
     /**
      * Evaluates inventory business rules and returns a summary:
-     *  - High-value percentage: proportion of products considered high-value (e.g., price >= some threshold).
-     *    The tests imply a scenario where 15 of 20 items (priced 2000) yield ~75% and should trigger a warning
-     *    when percentage exceeds 70%.
-     *  - Category diversity: count of distinct categories in the inventory. The tests expect at least 2.
-     *  - Convenience booleans: highValueWarning (percentage > 70%) and minimumDiversity (category count >= 2).
-     *
+     * - High-value percentage: proportion of products considered high-value (e.g., price >= some threshold).
+     * The tests imply a scenario where 15 of 20 items (priced 2000) yield ~75% and should trigger a warning
+     * when percentage exceeds 70%.
+     * - Category diversity: count of distinct categories in the inventory. The tests expect at least 2.
+     * - Convenience booleans: highValueWarning (percentage > 70%) and minimumDiversity (category count >= 2).
+     * <p>
      * Note: The exact high-value threshold is implementation-defined, but the provided tests create a clear
      * separation using very expensive electronics (e.g., 2000) vs. low-priced food items (e.g., 10),
      * allowing percentage computation regardless of the chosen cutoff as long as it matches the scenario.
@@ -261,16 +319,16 @@ class WarehouseAnalyzer {
         int diversity = (int) items.stream().map(Product::category).distinct().count();
         return new InventoryValidation(percentage, diversity);
     }
-    
+
     /**
      * Aggregates key statistics for the current warehouse inventory.
      * Test expectation for a 4-item setup:
-     *  - totalProducts: number of products (4)
-     *  - totalValue: sum of prices (1590.50)
-     *  - averagePrice: totalValue / totalProducts rounded to two decimals (397.63)
-     *  - expiredCount: number of perishable items whose expiration date is before today (1)
-     *  - categoryCount: number of distinct categories across all products (2)
-     *  - mostExpensiveProduct / cheapestProduct: extremes by price
+     * - totalProducts: number of products (4)
+     * - totalValue: sum of prices (1590.50)
+     * - averagePrice: totalValue / totalProducts rounded to two decimals (397.63)
+     * - expiredCount: number of perishable items whose expiration date is before today (1)
+     * - categoryCount: number of distinct categories across all products (2)
+     * - mostExpensiveProduct / cheapestProduct: extremes by price
      *
      * @return InventoryStatistics snapshot containing aggregated metrics
      */
@@ -310,9 +368,17 @@ class ShippingGroup {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public List<Shippable> getProducts() { return new ArrayList<>(products); }
-    public Double getTotalWeight() { return totalWeight; }
-    public BigDecimal getTotalShippingCost() { return totalShippingCost; }
+    public List<Shippable> getProducts() {
+        return new ArrayList<>(products);
+    }
+
+    public Double getTotalWeight() {
+        return totalWeight;
+    }
+
+    public BigDecimal getTotalShippingCost() {
+        return totalShippingCost;
+    }
 }
 
 /**
@@ -331,10 +397,21 @@ class InventoryValidation {
         this.minimumDiversity = categoryDiversity >= 2;
     }
 
-    public double getHighValuePercentage() { return highValuePercentage; }
-    public int getCategoryDiversity() { return categoryDiversity; }
-    public boolean isHighValueWarning() { return highValueWarning; }
-    public boolean hasMinimumDiversity() { return minimumDiversity; }
+    public double getHighValuePercentage() {
+        return highValuePercentage;
+    }
+
+    public int getCategoryDiversity() {
+        return categoryDiversity;
+    }
+
+    public boolean isHighValueWarning() {
+        return highValueWarning;
+    }
+
+    public boolean hasMinimumDiversity() {
+        return minimumDiversity;
+    }
 }
 
 /**
@@ -361,11 +438,31 @@ class InventoryStatistics {
         this.cheapestProduct = cheapestProduct;
     }
 
-    public int getTotalProducts() { return totalProducts; }
-    public BigDecimal getTotalValue() { return totalValue; }
-    public BigDecimal getAveragePrice() { return averagePrice; }
-    public int getExpiredCount() { return expiredCount; }
-    public int getCategoryCount() { return categoryCount; }
-    public Product getMostExpensiveProduct() { return mostExpensiveProduct; }
-    public Product getCheapestProduct() { return cheapestProduct; }
+    public int getTotalProducts() {
+        return totalProducts;
+    }
+
+    public BigDecimal getTotalValue() {
+        return totalValue;
+    }
+
+    public BigDecimal getAveragePrice() {
+        return averagePrice;
+    }
+
+    public int getExpiredCount() {
+        return expiredCount;
+    }
+
+    public int getCategoryCount() {
+        return categoryCount;
+    }
+
+    public Product getMostExpensiveProduct() {
+        return mostExpensiveProduct;
+    }
+
+    public Product getCheapestProduct() {
+        return cheapestProduct;
+    }
 }
